@@ -1,11 +1,13 @@
 const mongoose = require("mongoose")
-require("dotenv").config()
 
-const mongoUri = process.env.MONGODB
+let isConnected = false
+
 const initializeDatabase = async () => {
-   await mongoose.connect(mongoUri).then(() => {
-        console.log("Connected to Database")
-    }).catch((error) => console.log("Error connecting to Database", error))
+  if (isConnected) return
+
+  await mongoose.connect(process.env.MONGODB)
+  isConnected = true
+  console.log("✅ MongoDB connected")
 }
 
 module.exports = { initializeDatabase }

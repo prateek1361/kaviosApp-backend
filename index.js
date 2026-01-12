@@ -4,7 +4,6 @@ const cloudinary = require("cloudinary").v2
 const dotenv = require("dotenv")
 const cors = require("cors")
 const jwt = require("jsonwebtoken")
-const fs = require("fs")
 const { v4: uuid } = require("uuid")
 
 const { initializeDatabase } = require("./db.connect")
@@ -14,37 +13,44 @@ const Image = require("./models/Image")
 
 dotenv.config()
 
-
 const app = express()
+
+/* -------------------- Middleware -------------------- */
 app.use(cors())
 app.use(express.json())
 
+/**
+ * ✅ DB middleware (Vercel-safe)
+ * Acts like: initializeDatabase().then(app.listen())
+ */
+app.use(async (req, res, next) => {
+  try {
+    await initializeDatabase()
+    next()
+  } catch (err) {
+    console.error("DB connection error:", err)
+    res.status(500).json({ message: "Database connection failed" })
+  }
+})
 
-initializeDatabase()
-
-
+/* -------------------- Cloudinary -------------------- */
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 })
 
-
-const storage = multer.memoryStorage()
-
+/* -------------------- Multer (Memory) -------------------- */
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true)
-    } else {
-      cb(new Error("Only image files allowed"))
-    }
+    if (file.mimetype.startsWith("image/")) cb(null, true)
+    else cb(new Error("Only image files allowed"))
   }
 })
 
-
+/* -------------------- Auth Middleware -------------------- */
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1]
   if (!token) return res.status(401).json({ message: "No token" })
@@ -57,20 +63,35 @@ const authenticate = (req, res, next) => {
   }
 }
 
+/* -------------------- Routes -------------------- */
 
-app.post("/login", async (req, res) => {
-  const { email } = req.body
-
-  let user = await User.findOne({ email })
-  if (!user) {
-    user = await User.create({ userId: uuid(), email })
-  }
-
-  const token = jwt.sign(user.toObject(), process.env.JWT_SECRET)
-  res.json({ token })
+app.get("/", (req, res) => {
+  res.send("🚀 KaviosPix API running")
 })
 
+/* ---------- Login ---------- */
+app.post("/login", async (req, res) => {
+  try {
+    const { email } = req.body
 
+    let user = await User.findOne({ email })
+    if (!user) {
+      user = await User.create({ userId: uuid(), email })
+    }
+
+    const token = jwt.sign(
+      { userId: user.userId, email: user.email },
+      process.env.JWT_SECRET
+    )
+
+    res.json({ token })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: "Login failed" })
+  }
+})
+
+/* ---------- Albums ---------- */
 app.post("/albums", authenticate, async (req, res) => {
   const album = await Album.create({
     albumId: uuid(),
@@ -94,8 +115,7 @@ app.get("/albums", authenticate, async (req, res) => {
 
 app.post("/albums/:albumId/share", authenticate, async (req, res) => {
   const album = await Album.findOne({ albumId: req.params.albumId })
-  album.sharedWith.push(...req.body.emails)
-  album.sharedWith = [...new Set(album.sharedWith)]
+  album.sharedWith = [...new Set([...album.sharedWith, ...req.body.emails])]
   await album.save()
   res.json(album)
 })
@@ -106,23 +126,20 @@ app.delete("/albums/:albumId", authenticate, async (req, res) => {
   res.json({ message: "Album deleted" })
 })
 
-
+/* ---------- Images ---------- */
 app.post(
   "/albums/:albumId/images",
   authenticate,
   upload.single("image"),
   async (req, res) => {
     try {
-      if (!req.file) {
+      if (!req.file)
         return res.status(400).json({ message: "No file uploaded" })
-      }
 
-     const result = await cloudinary.uploader.upload(
+      const result = await cloudinary.uploader.upload(
         `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
         { folder: "kaviospix" }
       )
-
-     
 
       const image = await Image.create({
         imageId: uuid(),
@@ -137,19 +154,16 @@ app.post(
         imageUrl: result.secure_url
       })
 
-      res.status(200).json({
-        message: "Image uploaded successfully",
-        image
-      })
-    } catch (error) {
-      res.status(500).json({ message: "Image upload failed", error })
+      res.json({ message: "Image uploaded", image })
+    } catch (err) {
+      console.error(err)
+      res.status(500).json({ message: "Image upload failed" })
     }
   }
 )
 
 app.get("/albums/:albumId/images", authenticate, async (req, res) => {
-  const images = await Image.find({ albumId: req.params.albumId })
-  res.json(images)
+  res.json(await Image.find({ albumId: req.params.albumId }))
 })
 
 app.put(
@@ -183,6 +197,5 @@ app.delete(
   }
 )
 
-
+/* -------------------- Export for Vercel -------------------- */
 module.exports = app
-
