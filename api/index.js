@@ -6,23 +6,20 @@ const cors = require("cors")
 const jwt = require("jsonwebtoken")
 const { v4: uuid } = require("uuid")
 
-const { initializeDatabase } = require("./db.connect")
-const User = require("./models/User")
-const Album = require("./models/Album")
-const Image = require("./models/Image")
+const { initializeDatabase } = require("../db.connect")
+const User = require("../models/User")
+const Album = require("../models/Album")
+const Image = require("../models/Image")
 
 dotenv.config()
 
 const app = express()
 
-/* -------------------- Middleware -------------------- */
+
 app.use(cors())
 app.use(express.json())
 
-/**
- * ✅ DB middleware (Vercel-safe)
- * Acts like: initializeDatabase().then(app.listen())
- */
+
 app.use(async (req, res, next) => {
   try {
     await initializeDatabase()
@@ -33,14 +30,14 @@ app.use(async (req, res, next) => {
   }
 })
 
-/* -------------------- Cloudinary -------------------- */
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 })
 
-/* -------------------- Multer (Memory) -------------------- */
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -50,7 +47,6 @@ const upload = multer({
   }
 })
 
-/* -------------------- Auth Middleware -------------------- */
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1]
   if (!token) return res.status(401).json({ message: "No token" })
@@ -63,13 +59,13 @@ const authenticate = (req, res, next) => {
   }
 }
 
-/* -------------------- Routes -------------------- */
+
 
 app.get("/", (req, res) => {
   res.send("🚀 KaviosPix API running")
 })
 
-/* ---------- Login ---------- */
+
 app.post("/login", async (req, res) => {
   try {
     const { email } = req.body
@@ -91,7 +87,6 @@ app.post("/login", async (req, res) => {
   }
 })
 
-/* ---------- Albums ---------- */
 app.post("/albums", authenticate, async (req, res) => {
   const album = await Album.create({
     albumId: uuid(),
@@ -126,7 +121,7 @@ app.delete("/albums/:albumId", authenticate, async (req, res) => {
   res.json({ message: "Album deleted" })
 })
 
-/* ---------- Images ---------- */
+
 app.post(
   "/albums/:albumId/images",
   authenticate,
@@ -197,5 +192,5 @@ app.delete(
   }
 )
 
-/* -------------------- Export for Vercel -------------------- */
+
 module.exports = app
