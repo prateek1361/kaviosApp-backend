@@ -13,4 +13,4 @@ const imageSchema = new mongoose.Schema({
   path: String
 });
 
-export default mongoose.model("Image", imageSchema);
+module.exports = mongoose.model("Image", imageSchema);

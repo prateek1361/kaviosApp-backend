@@ -8,4 +8,4 @@ const albumSchema = new mongoose.Schema({
   sharedWith: [String]
 });
 
-export default mongoose.model("Album", albumSchema);
+module.exports = mongoose.model("Album", albumSchema);
