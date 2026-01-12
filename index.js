@@ -1,5 +1,4 @@
 const express = require("express")
-const serverless = require("serverless-http")
 const multer = require("multer")
 const cloudinary = require("cloudinary").v2
 const dotenv = require("dotenv")
@@ -7,10 +6,10 @@ const cors = require("cors")
 const jwt = require("jsonwebtoken")
 const { v4: uuid } = require("uuid")
 
-const { initializeDatabase } = require("../db.connect")
-const User = require("../models/User")
-const Album = require("../models/Album")
-const Image = require("../models/Image")
+const { initializeDatabase } = require("./db.connect")
+const User = require("./models/User")
+const Album = require("./models/Album")
+const Image = require("./models/Image")
 
 dotenv.config()
 
@@ -194,4 +193,8 @@ app.delete(
 )
 
 
-module.exports = serverless(app);
+const PORT = process.env.PORT || 5000;
+initializeDatabase().then(() => {
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+});
+
