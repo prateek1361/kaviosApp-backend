@@ -30,7 +30,8 @@ cloudinary.config({
 })
 
 
-const storage = multer.diskStorage({})
+const storage = multer.memoryStorage()
+
 const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -116,11 +117,12 @@ app.post(
         return res.status(400).json({ message: "No file uploaded" })
       }
 
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "kaviospix"
-      })
+     const result = await cloudinary.uploader.upload(
+        `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
+        { folder: "kaviospix" }
+      )
 
-      fs.unlinkSync(req.file.path)
+     
 
       const image = await Image.create({
         imageId: uuid(),
@@ -182,7 +184,5 @@ app.delete(
 )
 
 
-const PORT = process.env.PORT || 4000
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`)
-})
+module.exports = app
+
