@@ -1,4 +1,5 @@
 const express = require("express")
+const serverless = require("serverless-http")
 const multer = require("multer")
 const cloudinary = require("cloudinary").v2
 const dotenv = require("dotenv")
