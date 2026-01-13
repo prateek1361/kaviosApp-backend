@@ -1,91 +1,105 @@
-const express = require("express")
-const multer = require("multer")
-const cloudinary = require("cloudinary").v2
-const dotenv = require("dotenv")
-const cors = require("cors")
-const jwt = require("jsonwebtoken")
-const { v4: uuid } = require("uuid")
+const express = require("express");
+const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
+const dotenv = require("dotenv");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const session = require("express-session");
+const passport = require("passport");
+const { v4: uuid } = require("uuid");
 
-const { initializeDatabase } = require("./db.connect")
-const User = require("./models/User")
-const Album = require("./models/Album")
-const Image = require("./models/Image")
+require("./config/passport"); 
 
-dotenv.config()
+const { initializeDatabase } = require("./db.connect");
+const User = require("./models/User");
+const Album = require("./models/Album");
+const Image = require("./models/Image");
 
-const app = express()
+dotenv.config();
 
-
-app.use(cors())
-app.use(express.json())
+const app = express();
 
 
-app.use(async (req, res, next) => {
-  try {
-    await initializeDatabase()
-    next()
-  } catch (err) {
-    console.error("DB connection error:", err)
-    res.status(500).json({ message: "Database connection failed" })
-  }
-})
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+app.use(express.json());
+
+app.use(
+  session({
+    secret: "kaviospix_session_secret",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+
+initializeDatabase();
 
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-})
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) cb(null, true)
-    else cb(new Error("Only image files allowed"))
-  }
-})
+});
+
 
 const authenticate = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1]
-  if (!token) return res.status(401).json({ message: "No token" })
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "No token" });
 
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET)
-    next()
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
   } catch {
-    res.status(401).json({ message: "Invalid token" })
+    res.status(401).json({ message: "Invalid token" });
   }
-}
-
+};
 
 
 app.get("/", (req, res) => {
-  res.send("🚀 KaviosPix API running")
-})
+  res.send("🚀 KaviosPix API running");
+});
 
 
-app.post("/login", async (req, res) => {
-  try {
-    const { email } = req.body
+app.get(
+  "/auth/google",
+  passport.authenticate("google", {
+    scope: ["profile", "email"],
+  })
+);
 
-    let user = await User.findOne({ email })
-    if (!user) {
-      user = await User.create({ userId: uuid(), email })
-    }
+
+app.get(
+  "/auth/google/callback",
+  passport.authenticate("google", { failureRedirect: "/" }),
+  (req, res) => {
+    const user = req.user;
 
     const token = jwt.sign(
       { userId: user.userId, email: user.email },
-      process.env.JWT_SECRET
-    )
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-    res.json({ token })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ message: "Login failed" })
+    
+    res.redirect(
+      `https://2nqhv9.csb.app/auth-success?token=${token}`
+    );
   }
-})
+);
+
+
 
 app.post("/albums", authenticate, async (req, res) => {
   const album = await Album.create({
@@ -93,33 +107,33 @@ app.post("/albums", authenticate, async (req, res) => {
     name: req.body.name,
     description: req.body.description,
     ownerId: req.user.userId,
-    sharedWith: []
-  })
-  res.status(201).json(album)
-})
+    sharedWith: [],
+  });
+  res.status(201).json(album);
+});
 
 app.get("/albums", authenticate, async (req, res) => {
   const albums = await Album.find({
     $or: [
       { ownerId: req.user.userId },
-      { sharedWith: req.user.email }
-    ]
-  })
-  res.json(albums)
-})
+      { sharedWith: req.user.email },
+    ],
+  });
+  res.json(albums);
+});
 
 app.post("/albums/:albumId/share", authenticate, async (req, res) => {
-  const album = await Album.findOne({ albumId: req.params.albumId })
-  album.sharedWith = [...new Set([...album.sharedWith, ...req.body.emails])]
-  await album.save()
-  res.json(album)
-})
+  const album = await Album.findOne({ albumId: req.params.albumId });
+  album.sharedWith = [...new Set([...album.sharedWith, ...req.body.emails])];
+  await album.save();
+  res.json(album);
+});
 
 app.delete("/albums/:albumId", authenticate, async (req, res) => {
-  await Image.deleteMany({ albumId: req.params.albumId })
-  await Album.deleteOne({ albumId: req.params.albumId })
-  res.json({ message: "Album deleted" })
-})
+  await Image.deleteMany({ albumId: req.params.albumId });
+  await Album.deleteOne({ albumId: req.params.albumId });
+  res.json({ message: "Album deleted" });
+});
 
 
 app.post(
@@ -127,74 +141,63 @@ app.post(
   authenticate,
   upload.single("image"),
   async (req, res) => {
-    try {
-      if (!req.file)
-        return res.status(400).json({ message: "No file uploaded" })
+    const result = await cloudinary.uploader.upload(
+      `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
+      { folder: "kaviospix" }
+    );
 
-      const result = await cloudinary.uploader.upload(
-        `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
-        { folder: "kaviospix" }
-      )
+    const image = await Image.create({
+      imageId: uuid(),
+      albumId: req.params.albumId,
+      name: req.file.originalname,
+      isFavorite: false,
+      comments: [],
+      size: req.file.size,
+      uploadedAt: new Date(),
+      imageUrl: result.secure_url,
+    });
 
-      const image = await Image.create({
-        imageId: uuid(),
-        albumId: req.params.albumId,
-        name: req.file.originalname,
-        tags: req.body.tags || [],
-        person: req.body.person,
-        isFavorite: false,
-        comments: [],
-        size: req.file.size,
-        uploadedAt: new Date(),
-        imageUrl: result.secure_url
-      })
-
-      res.json({ message: "Image uploaded", image })
-    } catch (err) {
-      console.error(err)
-      res.status(500).json({ message: "Image upload failed" })
-    }
+    res.json({ message: "Image uploaded", image });
   }
-)
+);
 
 app.get("/albums/:albumId/images", authenticate, async (req, res) => {
-  res.json(await Image.find({ albumId: req.params.albumId }))
-})
+  res.json(await Image.find({ albumId: req.params.albumId }));
+});
 
 app.put(
   "/albums/:albumId/images/:imageId/favorite",
   authenticate,
   async (req, res) => {
-    const image = await Image.findOne({ imageId: req.params.imageId })
-    image.isFavorite = req.body.isFavorite
-    await image.save()
-    res.json(image)
+    const image = await Image.findOne({ imageId: req.params.imageId });
+    image.isFavorite = req.body.isFavorite;
+    await image.save();
+    res.json(image);
   }
-)
+);
 
 app.post(
   "/albums/:albumId/images/:imageId/comments",
   authenticate,
   async (req, res) => {
-    const image = await Image.findOne({ imageId: req.params.imageId })
-    image.comments.push(req.body.comment)
-    await image.save()
-    res.json(image)
+    const image = await Image.findOne({ imageId: req.params.imageId });
+    image.comments.push(req.body.comment);
+    await image.save();
+    res.json(image);
   }
-)
+);
 
 app.delete(
   "/albums/:albumId/images/:imageId",
   authenticate,
   async (req, res) => {
-    await Image.deleteOne({ imageId: req.params.imageId })
-    res.json({ message: "Image deleted" })
+    await Image.deleteOne({ imageId: req.params.imageId });
+    res.json({ message: "Image deleted" });
   }
-)
+);
 
 
 const PORT = process.env.PORT || 5000;
-initializeDatabase().then(() => {
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-});
-
+app.listen(PORT, () =>
+  console.log(`🚀 Server running on port ${PORT}`)
+);
