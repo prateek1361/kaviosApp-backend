@@ -15,7 +15,7 @@ const User = require("./models/User");
 const Album = require("./models/Album");
 const Image = require("./models/Image");
 
-dotenv.config();
+
 
 const app = express();
 
