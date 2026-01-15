@@ -227,6 +227,57 @@ app.delete(
 );
 
 
+app.put("/albums/:albumId", authenticate, async (req, res) => {
+  try {
+    const album = await Album.findOne({ albumId: req.params.albumId });
+
+    if (!album || album.ownerId !== req.user.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    if (req.body.name) album.name = req.body.name;
+    if (req.body.description !== undefined) album.description = req.body.description;
+
+    await album.save();
+    res.json(album);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to edit album" });
+  }
+});
+
+
+app.put("/albums/:albumId/images/:imageId/tags", authenticate, async (req, res) => {
+  try {
+    const image = await Image.findOne({ imageId: req.params.imageId });
+    if (!image) return res.status(404).json({ message: "Image not found" });
+
+    image.tags = req.body.tags || [];
+    await image.save();
+    res.json(image);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to update tags" });
+  }
+});
+
+
+app.put("/albums/:albumId/images/:imageId/person", authenticate, async (req, res) => {
+  try {
+    const image = await Image.findOne({ imageId: req.params.imageId });
+    if (!image) return res.status(404).json({ message: "Image not found" });
+
+    image.person = req.body.person || "";
+    await image.save();
+    res.json(image);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to update person" });
+  }
+});
+
+
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () =>
