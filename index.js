@@ -1,5 +1,5 @@
-const dotenv = require("dotenv").config
 const express = require("express");
+const dotenv = require("dotenv");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const cors = require("cors");
@@ -8,22 +8,26 @@ const session = require("express-session");
 const passport = require("passport");
 const { v4: uuid } = require("uuid");
 
-require("./config/passport"); 
+dotenv.config();
+
+require("./config/passport");
 
 const { initializeDatabase } = require("./db.connect");
 const User = require("./models/User");
 const Album = require("./models/Album");
 const Image = require("./models/Image");
 
-
-
 const app = express();
 
 
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 app.use(
@@ -37,8 +41,8 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-
 initializeDatabase();
+
 
 
 cloudinary.config({
@@ -48,10 +52,12 @@ cloudinary.config({
 });
 
 
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
+
 
 
 const authenticate = (req, res, next) => {
@@ -67,9 +73,11 @@ const authenticate = (req, res, next) => {
 };
 
 
+
 app.get("/", (req, res) => {
   res.send("🚀 KaviosPix API running");
 });
+
 
 
 app.get(
@@ -78,7 +86,6 @@ app.get(
     scope: ["profile", "email"],
   })
 );
-
 
 app.get(
   "/auth/google/callback",
@@ -105,10 +112,11 @@ app.post("/albums", authenticate, async (req, res) => {
   const album = await Album.create({
     albumId: uuid(),
     name: req.body.name,
-    description: req.body.description,
+    description: req.body.description || "",
     ownerId: req.user.userId,
     sharedWith: [],
   });
+
   res.status(201).json(album);
 });
 
@@ -119,13 +127,20 @@ app.get("/albums", authenticate, async (req, res) => {
       { sharedWith: req.user.email },
     ],
   });
+
   res.json(albums);
 });
 
 app.post("/albums/:albumId/share", authenticate, async (req, res) => {
   const album = await Album.findOne({ albumId: req.params.albumId });
+
+  if (!album || album.ownerId !== req.user.userId) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
   album.sharedWith = [...new Set([...album.sharedWith, ...req.body.emails])];
   await album.save();
+
   res.json(album);
 });
 
@@ -134,6 +149,7 @@ app.delete("/albums/:albumId", authenticate, async (req, res) => {
   await Album.deleteOne({ albumId: req.params.albumId });
   res.json({ message: "Album deleted" });
 });
+
 
 
 app.post(
@@ -150,6 +166,8 @@ app.post(
       imageId: uuid(),
       albumId: req.params.albumId,
       name: req.file.originalname,
+      tags: [],
+      person: "",
       isFavorite: false,
       comments: [],
       size: req.file.size,
@@ -157,11 +175,23 @@ app.post(
       imageUrl: result.secure_url,
     });
 
-    res.json({ message: "Image uploaded", image });
+    res.json(image);
   }
 );
 
 app.get("/albums/:albumId/images", authenticate, async (req, res) => {
+  const album = await Album.findOne({
+    albumId: req.params.albumId,
+    $or: [
+      { ownerId: req.user.userId },
+      { sharedWith: req.user.email },
+    ],
+  });
+
+  if (!album) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
   res.json(await Image.find({ albumId: req.params.albumId }));
 });
 
@@ -195,6 +225,7 @@ app.delete(
     res.json({ message: "Image deleted" });
   }
 );
+
 
 
 const PORT = process.env.PORT || 5000;

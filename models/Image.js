@@ -1,16 +1,39 @@
-const mongoose = require("mongoose")
+const mongoose = require("mongoose");
 
 const imageSchema = new mongoose.Schema({
-  imageId: String,
-  albumId: String,
+  imageId: {
+    type: String,
+    required: true,
+  },
+
+  albumId: {
+    type: String,
+    required: true,
+  },
+
   name: String,
-  tags: [String],
-  person: String,
-  isFavorite: Boolean,
+
+  imageUrl: {
+    type: String,
+    required: true,
+  },
+
+  tags: [String],          
+  people: [String],       
+
+  isFavorite: {
+    type: Boolean,
+    default: false,
+  },
+
   comments: [String],
+
   size: Number,
-  uploadedAt: Date,
-  path: String
+
+  uploadedAt: {
+    type: Date,
+    default: Date.now,
+  },
 });
 
 module.exports = mongoose.model("Image", imageSchema);
